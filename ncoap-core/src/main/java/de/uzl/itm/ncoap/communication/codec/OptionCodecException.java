@@ -25,11 +25,10 @@
 package de.uzl.itm.ncoap.communication.codec;
 
 import de.uzl.itm.ncoap.communication.dispatching.Token;
-
-import java.net.InetSocketAddress;
-
 import de.uzl.itm.ncoap.message.options.Option;
 import de.uzl.itm.ncoap.message.options.OptionValue;
+
+import java.net.InetSocketAddress;
 
 
 /**
@@ -116,7 +115,7 @@ public class OptionCodecException extends Exception {
      *
      * @param remoteSocket the remote CoAP endpoints of the message that caused this exception
      */
-    public void setremoteSocket(InetSocketAddress remoteSocket) {
+    public void setRemoteSocket(InetSocketAddress remoteSocket) {
         this.remoteSocket = remoteSocket;
     }
 
@@ -129,7 +128,7 @@ public class OptionCodecException extends Exception {
      *
      * @return the remote CoAP endpoints of the message that caused this exception
      */
-    public InetSocketAddress getremoteSocket() {
+    public InetSocketAddress getRemoteSocket() {
         return remoteSocket;
     }
 

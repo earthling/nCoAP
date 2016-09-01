@@ -24,83 +24,73 @@
  */
 package de.uzl.itm.ncoap.communication.codec;
 
-import java.net.InetSocketAddress;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.google.common.base.Charsets;
 import de.uzl.itm.ncoap.communication.dispatching.Token;
-import de.uzl.itm.ncoap.message.CoapMessage;
-import de.uzl.itm.ncoap.message.CoapMessageEnvelope;
-import de.uzl.itm.ncoap.message.CoapRequest;
-import de.uzl.itm.ncoap.message.CoapResponse;
-import de.uzl.itm.ncoap.message.MessageCode;
-import de.uzl.itm.ncoap.message.options.EmptyOptionValue;
-import de.uzl.itm.ncoap.message.options.OpaqueOptionValue;
-import de.uzl.itm.ncoap.message.options.Option;
-import de.uzl.itm.ncoap.message.options.OptionValue;
-import de.uzl.itm.ncoap.message.options.StringOptionValue;
-import de.uzl.itm.ncoap.message.options.UintOptionValue;
+import de.uzl.itm.ncoap.message.*;
+import de.uzl.itm.ncoap.message.options.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.DatagramPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.InetSocketAddress;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static de.uzl.itm.ncoap.message.MessageCode.BAD_OPTION_402;
 import static de.uzl.itm.ncoap.message.MessageCode.EMPTY;
-import static de.uzl.itm.ncoap.message.MessageType.ACK;
-import static de.uzl.itm.ncoap.message.MessageType.CON;
-import static de.uzl.itm.ncoap.message.MessageType.NON;
-import static de.uzl.itm.ncoap.message.MessageType.RST;
+import static de.uzl.itm.ncoap.message.MessageType.*;
 
 /**
  * The {@link CoapMessageDecoder} deserializes inbound messages. Please note the following:
  * <ul>
- *     <li>
- *          If the inbound message is a {@link de.uzl.itm.ncoap.message.CoapResponse} then malformed or unknown options
- *          are silently ignored and the {@link de.uzl.itm.ncoap.message.CoapResponse} is further processed without
- *          these options.
- *     </li>
- *     <li>
- *          If the inbound message is a {@link de.uzl.itm.ncoap.message.CoapRequest}, then malformed or unsupported,
- *          i.e. unknown non-critical options are silently ignored but critical options lead to an immediate
- *          {@link de.uzl.itm.ncoap.message.CoapResponse} with
- *          {@link de.uzl.itm.ncoap.message.MessageCode#BAD_OPTION_402} being sent to the remote CoAP endpoints.
- *     </li>
- *     <li>
- *          Malformed inbound {@link de.uzl.itm.ncoap.message.CoapMessage}s with malformed header, e.g. a TKL field
- *          that does not correspond to the actual tokens length, lead to an immediate
- *          {@link de.uzl.itm.ncoap.message.CoapMessage} with {@link de.uzl.itm.ncoap.message.MessageType#RST} being
- *          sent to the remote CoAP endpoints.
- *     </li>
- *     <li>
- *         For inbound {@link de.uzl.itm.ncoap.message.CoapMessage}s with
- *         {@link de.uzl.itm.ncoap.message.MessageCode#EMPTY} only the header, i.e. the first 4 bytes are decoded and
- *         further processed. Any following bytes contained in the same encoded message are ignored.
- *     </li>
+ * <li>
+ * If the inbound message is a {@link de.uzl.itm.ncoap.message.CoapResponse} then malformed or unknown options
+ * are silently ignored and the {@link de.uzl.itm.ncoap.message.CoapResponse} is further processed without
+ * these options.
+ * </li>
+ * <li>
+ * If the inbound message is a {@link de.uzl.itm.ncoap.message.CoapRequest}, then malformed or unsupported,
+ * i.e. unknown non-critical options are silently ignored but critical options lead to an immediate
+ * {@link de.uzl.itm.ncoap.message.CoapResponse} with
+ * {@link de.uzl.itm.ncoap.message.MessageCode#BAD_OPTION_402} being sent to the remote CoAP endpoints.
+ * </li>
+ * <li>
+ * Malformed inbound {@link de.uzl.itm.ncoap.message.CoapMessage}s with malformed header, e.g. a TKL field
+ * that does not correspond to the actual tokens length, lead to an immediate
+ * {@link de.uzl.itm.ncoap.message.CoapMessage} with {@link de.uzl.itm.ncoap.message.MessageType#RST} being
+ * sent to the remote CoAP endpoints.
+ * </li>
+ * <li>
+ * For inbound {@link de.uzl.itm.ncoap.message.CoapMessage}s with
+ * {@link de.uzl.itm.ncoap.message.MessageCode#EMPTY} only the header, i.e. the first 4 bytes are decoded and
+ * further processed. Any following bytes contained in the same encoded message are ignored.
+ * </li>
  * </ul>
  *
  * @author Oliver Kleine
  */
-public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPacket>
-{
+public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPacket> {
 
-    private Logger log = LoggerFactory.getLogger(this.getClass().getName());
+    private static final Logger log = LoggerFactory.getLogger(CoapMessageDecoder.class);
 
     @Override
-    public void channelRead0(ChannelHandlerContext ctx, DatagramPacket packet) throws Exception {
-
-        InetSocketAddress remoteSocket = packet.sender();
-        CoapMessage coapMessage = decode(remoteSocket, packet.content());
-
-        if (coapMessage != null) {
-            InetSocketAddress localSocket = (InetSocketAddress) ctx.channel().localAddress();
-            ctx.fireChannelRead(new CoapMessageEnvelope(coapMessage, localSocket, remoteSocket));
+    public void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
+        try {
+            CoapMessage message = decode(msg.sender(), msg.content());
+            ctx.fireChannelRead(new CoapMessageEnvelope(message, msg.recipient(), msg.sender()));
+        } catch (OptionCodecException e) {
+            log.error("Could not decode coap request from {}: {}.", msg.sender(), e.getMessage());
+            ctx.writeAndFlush(new CoapMessageEnvelope(createCoapErrorResponse(MessageCode.BAD_OPTION_402, e.getMessage()), msg.sender()));
+        } catch (Exception e) {
+            log.error("Could not decode coap request from {}: {}.", msg.sender(), e.getMessage());
+            ctx.writeAndFlush(new CoapMessageEnvelope(createCoapErrorResponse(MessageCode.INTERNAL_SERVER_ERROR_500, e.getMessage()), msg.sender()));
         }
     }
 
-
-    protected CoapMessage decode(InetSocketAddress remoteSocket, ByteBuf buffer)
+    public static CoapMessage decode(InetSocketAddress remoteSocket, ByteBuf buffer)
             throws HeaderDecodingException, OptionCodecException {
 
         log.debug("Incoming message to be decoded (length: {})", buffer.readableBytes());
@@ -113,11 +103,11 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
 
         //Decode the header values
         int encodedHeader = buffer.readInt();
-        int version =     (encodedHeader >>> 30) & 0x03;
+        int version = (encodedHeader >>> 30) & 0x03;
         int messageType = (encodedHeader >>> 28) & 0x03;
         int tokenLength = (encodedHeader >>> 24) & 0x0F;
         int messageCode = (encodedHeader >>> 16) & 0xFF;
-        int messageID =   (encodedHeader)        & 0xFFFF;
+        int messageID = (encodedHeader) & 0xFFFF;
 
 
         log.debug("Decoded Header: (T) {}, (TKL) {}, (C) {}, (ID) {}",
@@ -180,7 +170,7 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
             } catch (OptionCodecException ex) {
                 ex.setMessageID(messageID);
                 ex.setToken(new Token(token));
-                ex.setremoteSocket(remoteSocket);
+                ex.setRemoteSocket(remoteSocket);
                 ex.setMessageType(messageType);
                 throw ex;
             }
@@ -204,16 +194,18 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
     }
 
 
-    private void setOptions(CoapMessage coapMessage, ByteBuf buffer) throws OptionCodecException {
+    private static void setOptions(CoapMessage coapMessage, ByteBuf buffer) throws OptionCodecException {
 
         //Decode the options
         int previousOptionNumber = 0;
         int firstByte = buffer.readByte() & 0xFF;
+        boolean isproxyRequest = false;
+        Map<Integer, byte[]> unrecognizedOptions = new LinkedHashMap<>();
 
-        while(firstByte != 0xFF && buffer.readableBytes() >= 0) {
+        while (firstByte != 0xFF && buffer.readableBytes() >= 0) {
             log.debug("First byte: {} ({})", toBinaryString(firstByte), firstByte);
-            int optionDelta =   (firstByte & 0xF0) >>> 4;
-            int optionLength =   firstByte & 0x0F;
+            int optionDelta = (firstByte & 0xF0) >>> 4;
+            int optionLength = firstByte & 0x0F;
             log.debug("temp. delta: {}, temp. length {}", optionDelta, optionLength);
 
             if (optionDelta == 13) {
@@ -233,11 +225,11 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
             int actualOptionNumber = previousOptionNumber + optionDelta;
             log.info("Decode option no. {} with length of {} bytes.", actualOptionNumber, optionLength);
 
-            try {
-                byte[] optionValue = new byte[optionLength];
-                buffer.readBytes(optionValue);
+            byte[] optionValue = new byte[optionLength];
+            buffer.readBytes(optionValue);
 
-                switch(OptionValue.getType(actualOptionNumber)) {
+            try {
+                switch (OptionValue.getType(actualOptionNumber)) {
                     case EMPTY: {
                         EmptyOptionValue value = new EmptyOptionValue(actualOptionNumber);
                         coapMessage.addOption(actualOptionNumber, value);
@@ -264,19 +256,11 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
                     }
                 }
             } catch (IllegalArgumentException e) {
-                //failed option creation leads to an illegal argument exception
-                log.warn("Exception while decoding option!", e);
+                unrecognizedOptions.put(actualOptionNumber, optionValue);
+            }
 
-                if (MessageCode.isResponse(coapMessage.getMessageCode())) {
-                    //Malformed options in responses are silently ignored...
-                    log.warn("Silently ignore malformed option no. {} in inbound response.", actualOptionNumber);
-                } else if (Option.isCritical(actualOptionNumber)) {
-                    //Critical malformed options in requests cause an exception
-                    throw new OptionCodecException(actualOptionNumber);
-                } else {
-                    //Not critical malformed options in requests are silently ignored...
-                    log.warn("Silently ignore elective option no. {} in inbound request.", actualOptionNumber);
-                }
+            if (actualOptionNumber == Option.PROXY_URI || actualOptionNumber == Option.PROXY_SCHEME) {
+                isproxyRequest = true;
             }
 
             previousOptionNumber = actualOptionNumber;
@@ -290,6 +274,45 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
 
             log.debug("{} readable bytes remaining.", buffer.readableBytes());
         }
+
+        if (!unrecognizedOptions.isEmpty()) {
+            handleUnrecognizedOptions(coapMessage, unrecognizedOptions, isproxyRequest);
+        }
+    }
+
+    private static void handleUnrecognizedOptions(CoapMessage coapMessage, Map<Integer, byte[]> unrecognizedOptions, boolean isproxyRequest) throws OptionCodecException {
+        for (Map.Entry<Integer, byte[]> unrecognizedOption : unrecognizedOptions.entrySet()) {
+            int unrecognizedOptionNumber = unrecognizedOption.getKey();
+
+            if (isproxyRequest) {
+                handleUnrecognizedProxyOption(coapMessage, unrecognizedOptionNumber, unrecognizedOption.getValue());
+            } else {
+                handleUnrecognizedTargetOption(coapMessage, unrecognizedOptionNumber);
+            }
+        }
+    }
+
+    private static void handleUnrecognizedProxyOption(CoapMessage coapMessage, int unrecognizedOptionNumber, byte[] optionValue) throws OptionCodecException {
+        if (Option.isSafe(unrecognizedOptionNumber)) {
+            coapMessage.addOption(unrecognizedOptionNumber, new OpaqueOptionValue(unrecognizedOptionNumber, optionValue));
+        } else {
+            throw new OptionCodecException(unrecognizedOptionNumber);
+        }
+    }
+
+    private static void handleUnrecognizedTargetOption(CoapMessage coapMessage, int unrecognizedOptionNumber) throws OptionCodecException {
+        // Malformed options in responses are silently ignored...
+        if (MessageCode.isResponse(coapMessage.getMessageCode())) {
+            log.warn("Silently ignore malformed option no. {} in inbound response.", unrecognizedOptionNumber);
+        }
+        // Critical malformed options in requests cause an exception (and 4.02 Bad Option Response Code)
+        else if (Option.isCritical(unrecognizedOptionNumber)) {
+            throw new OptionCodecException(unrecognizedOptionNumber);
+        }
+        // Not critical malformed options in requests are silently ignored...
+        else {
+            log.warn("Silently ignore elective option no. {} in inbound request.", unrecognizedOptionNumber);
+        }
     }
 
     @Override
@@ -299,7 +322,7 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
             HeaderDecodingException ex = (HeaderDecodingException) cause;
 
             if (ex.getMessageID() != CoapMessage.UNDEFINED_MESSAGE_ID) {
-                writeReset(ctx, ex.getMessageID(), ex.getremoteSocket());
+                writeReset(ctx, ex.getMessageID(), ex.getRemoteSocket());
             } else {
                 log.warn("Ignore inbound message with malformed header...");
             }
@@ -307,7 +330,7 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
             OptionCodecException ex = (OptionCodecException) cause;
             int messageType = ex.getMessageType() == CON ? ACK : NON;
 
-            writeBadOptionResponse(ctx, messageType, ex.getMessageID(), ex.getToken(), ex.getremoteSocket(),
+            writeBadOptionResponse(ctx, messageType, ex.getMessageID(), ex.getToken(), ex.getRemoteSocket(),
                     ex.getMessage());
         } else {
             ctx.fireExceptionCaught(cause);
@@ -332,11 +355,10 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
     }
 
 
-
     private static String toBinaryString(int byteValue) {
         StringBuilder buffer = new StringBuilder(8);
 
-        for(int i = 7; i >= 0; i--) {
+        for (int i = 7; i >= 0; i--) {
             if ((byteValue & (int) Math.pow(2, i)) > 0) {
                 buffer.append("1");
             } else {
@@ -345,5 +367,11 @@ public class CoapMessageDecoder extends SimpleChannelInboundHandler<DatagramPack
         }
 
         return buffer.toString();
+    }
+
+    private static CoapResponse createCoapErrorResponse(int messageCode, String message) {
+        CoapResponse response = new CoapResponse(MessageType.NON, messageCode);
+        response.setContent(message.getBytes(Charsets.UTF_8));
+        return response;
     }
 }

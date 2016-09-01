@@ -24,18 +24,6 @@
  */
 package de.uzl.itm.ncoap.message;
 
-import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.google.common.base.Supplier;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -43,28 +31,19 @@ import com.google.common.collect.SetMultimap;
 import com.google.common.primitives.Longs;
 import de.uzl.itm.ncoap.communication.blockwise.BlockSize;
 import de.uzl.itm.ncoap.communication.dispatching.Token;
-import de.uzl.itm.ncoap.message.options.ContentFormat;
-import de.uzl.itm.ncoap.message.options.EmptyOptionValue;
-import de.uzl.itm.ncoap.message.options.OpaqueOptionValue;
-import de.uzl.itm.ncoap.message.options.Option;
-import de.uzl.itm.ncoap.message.options.OptionValue;
-import de.uzl.itm.ncoap.message.options.StringOptionValue;
-import de.uzl.itm.ncoap.message.options.UintOptionValue;
+import de.uzl.itm.ncoap.message.options.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.util.AbstractReferenceCounted;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.Charset;
+import java.util.*;
 
 import static de.uzl.itm.ncoap.message.MessageCode.EMPTY;
-import static de.uzl.itm.ncoap.message.MessageType.ACK;
-import static de.uzl.itm.ncoap.message.MessageType.CON;
-import static de.uzl.itm.ncoap.message.MessageType.RST;
-import static de.uzl.itm.ncoap.message.options.Option.BLOCK_1;
-import static de.uzl.itm.ncoap.message.options.Option.BLOCK_2;
-import static de.uzl.itm.ncoap.message.options.Option.CONTENT_FORMAT;
-import static de.uzl.itm.ncoap.message.options.Option.ENDPOINT_ID_1;
-import static de.uzl.itm.ncoap.message.options.Option.ENDPOINT_ID_2;
-import static de.uzl.itm.ncoap.message.options.Option.OBSERVE;
-import static de.uzl.itm.ncoap.message.options.Option.SIZE_1;
-import static de.uzl.itm.ncoap.message.options.Option.SIZE_2;
+import static de.uzl.itm.ncoap.message.MessageType.*;
+import static de.uzl.itm.ncoap.message.options.Option.*;
 
 /**
  * This class is the base class for inheriting subtypes, e.g. requests and responses. This abstract class provides the
@@ -72,7 +51,7 @@ import static de.uzl.itm.ncoap.message.options.Option.SIZE_2;
  *
  * @author Oliver Kleine
  */
-public abstract class CoapMessage {
+public abstract class CoapMessage extends AbstractReferenceCounted {
 
     /**
      * The CoAP protocol version (1)
@@ -87,7 +66,7 @@ public abstract class CoapMessage {
     /**
      * Internal constant to indicate that the message ID was not yet set (-1)
      */
-    public static final int UNDEFINED_MESSAGE_ID = -1;
+    public static final int UNDEFINED_MESSAGE_ID = 0xFFFF;
 
     /**
      * The maximum length of the byte array that backs the {@link Token} of {@link CoapMessage} (8)
@@ -182,7 +161,8 @@ public abstract class CoapMessage {
      * @throws IllegalArgumentException if the given message ID is out of the allowed range
      */
     public static CoapMessage createEmptyReset(int messageID) throws IllegalArgumentException {
-        return new CoapMessage(RST, EMPTY, messageID, new Token(new byte[0])) {};
+        return new CoapMessage(RST, EMPTY, messageID, new Token(new byte[0])) {
+        };
     }
 
 
@@ -196,9 +176,15 @@ public abstract class CoapMessage {
      * @throws IllegalArgumentException if the given message ID is out of the allowed range
      */
     public static CoapMessage createEmptyAcknowledgement(int messageID) throws IllegalArgumentException {
-        return new CoapMessage(ACK, EMPTY, messageID, new Token(new byte[0])) {};
+        return new CoapMessage(ACK, EMPTY, messageID, new Token(new byte[0])) {
+        };
     }
 
+    public static CoapMessageEnvelope acknowledgement(CoapMessageEnvelope request) {
+        return new CoapMessageEnvelope(
+                createEmptyAcknowledgement(request.content().getMessageID()),
+                request.sender());
+    }
 
     /**
      * Method to create an empty confirmable message which is considered a PIMG message on application layer, i.e.
@@ -210,10 +196,50 @@ public abstract class CoapMessage {
      *
      * @throws IllegalArgumentException if the given message ID is out of the allowed range
      */
-    public static CoapMessage createPing(int messageID) throws IllegalArgumentException{
-        return new CoapMessage(CON, EMPTY, messageID, new Token(new byte[0])) {};
+    public static CoapMessage createPing(int messageID) throws IllegalArgumentException {
+        return new CoapMessage(CON, EMPTY, messageID, new Token(new byte[0])) {
+        };
     }
 
+    public static CoapMessageEnvelope createResponseTo(CoapMessageEnvelope request, byte[] content) {
+        return createResponseTo(request, content, MessageCode.CONTENT_205);
+    }
+
+    public static CoapMessageEnvelope createResponseTo(CoapMessageEnvelope request, byte[] content, int responseCode) {
+        CoapResponse response = createResponseTo(request.content(), responseCode);
+        response.setContent(content);
+        return new CoapMessageEnvelope(response, request.sender());
+    }
+
+    public static CoapMessageEnvelope createResponseTo(CoapMessageEnvelope request, int errorCode) {
+        CoapResponse response = createResponseTo(request.content(), errorCode);
+        return new CoapMessageEnvelope(response, request.sender());
+    }
+
+    public static CoapResponse createResponseTo(CoapMessage message, int errorCode) {
+        if (message.getMessageType() == CON) {
+            CoapResponse response = new CoapResponse(MessageType.ACK, errorCode);
+            response.setMessageID(message.getMessageID());
+            response.setToken(message.getToken());
+            return response;
+        }
+
+        if (message.getMessageType() == MessageType.NON) {
+            CoapResponse response = new CoapResponse(MessageType.NON, errorCode);
+            response.setMessageID(nextMessageId());
+            response.setToken(message.getToken());
+            return response;
+        }
+
+        throw new IllegalArgumentException("Request type must be CON or NON, was: " + message.getMessageTypeName());
+    }
+
+    private static volatile int messageId = 0;
+
+
+    private static int nextMessageId() {
+        return ++messageId;
+    }
 
     /**
      * Sets the message type of this {@link CoapMessage}. Usually there is no need to use this method as the value
@@ -258,7 +284,7 @@ public abstract class CoapMessage {
     public void addOption(int optionNumber, OptionValue optionValue) throws IllegalArgumentException {
         this.checkOptionPermission(optionNumber);
 
-        for(int containedOption : options.keySet()) {
+        for (int containedOption : options.keySet()) {
             if (Option.mutuallyExcludes(containedOption, optionNumber))
                 throw new IllegalArgumentException(String.format(EXCLUDES, containedOption, optionNumber));
         }
@@ -269,6 +295,17 @@ public abstract class CoapMessage {
 
     }
 
+    /**
+     * Adds an unrecognized option to this {@link CoapMessage}.
+     *
+     * @param optionNumber the number representing the option type
+     * @param optionValue the {@link OptionValue} of this option
+     *
+     */
+    public void addUnrecognizedOption(int optionNumber, OptionValue optionValue) {
+        options.put(optionNumber, optionValue);
+        log.debug("Added unrecognized option (number: {}, value: {})", optionNumber, optionValue.toString());
+    }
 
     /**
      * Adds an string option to this {@link CoapMessage}. However, it is recommended to use the options specific methods
@@ -310,7 +347,7 @@ public abstract class CoapMessage {
         //Add new option to option list
         byte[] byteValue = Longs.toByteArray(value);
         int index = 0;
-        while(index < byteValue.length && byteValue[index] == 0) {
+        while (index < byteValue.length && byteValue[index] == 0) {
             index++;
         }
         UintOptionValue option = new UintOptionValue(optionNumber, Arrays.copyOfRange(byteValue, index, byteValue.length));
@@ -383,7 +420,7 @@ public abstract class CoapMessage {
             throw new IllegalArgumentException(String.format(OPTION_NOT_ALLOWED_WITH_MESSAGE_TYPE,
                     optionNumber, Option.asString(optionNumber), this.getMessageCodeName()));
         } else if (options.containsKey(optionNumber) && permittedOccurence == Option.Occurence.ONCE) {
-                throw new IllegalArgumentException(String.format(OPTION_ALREADY_SET, optionNumber));
+            throw new IllegalArgumentException(String.format(OPTION_ALREADY_SET, optionNumber));
         }
     }
 
@@ -507,7 +544,6 @@ public abstract class CoapMessage {
     }
 
 
-
     /**
      * Sets the observing option in this {@link CoapRequest} and returns
      * <code>true</code> if the option is set after method returns (may already have been set beforehand in a prior
@@ -523,8 +559,7 @@ public abstract class CoapMessage {
             this.removeOptions(OBSERVE);
             value = value & 0xFFFFFF;
             this.addUintOption(OBSERVE, value);
-        }
-        catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             this.removeOptions(OBSERVE);
             log.error("This should never happen.", e);
         }
@@ -689,7 +724,7 @@ public abstract class CoapMessage {
     }
 
 
-    public void setSize2(long size2) throws IllegalArgumentException{
+    public void setSize2(long size2) throws IllegalArgumentException {
         this.options.removeAll(SIZE_2);
         this.addUintOption(SIZE_2, size2);
     }
@@ -704,7 +739,7 @@ public abstract class CoapMessage {
     }
 
 
-    public void setSize1(long size1) throws IllegalArgumentException{
+    public void setSize1(long size1) throws IllegalArgumentException {
         this.options.removeAll(SIZE_1);
         this.addUintOption(SIZE_1, size1);
     }
@@ -816,9 +851,14 @@ public abstract class CoapMessage {
             throw new IllegalArgumentException(String.format(DOES_NOT_ALLOW_CONTENT, this.getMessageCodeName()));
         }
 
-        this.content = content;
+        this.content = content.retain();
     }
 
+    @Override
+    protected void deallocate()
+    {
+        this.content.release();
+    }
 
     /**
      * Sets the content (payload) of this {@link CoapMessage}.
@@ -902,7 +942,7 @@ public abstract class CoapMessage {
         return this.options;
     }
 
-    public void setAllOptions (SetMultimap<Integer, OptionValue> options) {
+    public void setAllOptions(SetMultimap<Integer, OptionValue> options) {
         this.options = options;
     }
 
@@ -978,7 +1018,7 @@ public abstract class CoapMessage {
         Iterator<Map.Entry<Integer, OptionValue>> iterator2 = other.getAllOptions().entries().iterator();
 
         //Check if both CoAP Messages contain the same options in the same order
-        while(iterator1.hasNext()) {
+        while (iterator1.hasNext()) {
 
             //Check if iterator2 has no more options while iterator1 has at least one more
             if (!iterator2.hasNext())
@@ -1006,22 +1046,26 @@ public abstract class CoapMessage {
     @Override
     public String toString() {
 
-        StringBuffer result =  new StringBuffer();
+        StringBuilder result =  new StringBuilder();
 
         //Header + Token
-        result.append("[Header: (V) " + getProtocolVersion() + ", (T) " + getMessageTypeName() + ", (TKL) "
-            + token.getBytes().length + ", (C) " + getMessageCodeName() + ", (ID) " + getMessageID() + " | (Token) "
-            + token + " | ");
+        result.append("[Header: (V) ").append(getProtocolVersion())
+            .append(", (T) ").append(getMessageTypeName())
+            .append(", (TKL) ").append(token.getBytes().length)
+            .append(", (C) ").append(getMessageCodeName())
+            .append(", (ID) ").append(getMessageID())
+            .append(" | (Token) ").append(token)
+            .append(" | ");
 
         //Options
         result.append("Options:");
-        for(int optionNumber : getAllOptions().keySet()) {
-            result.append(" (No. " + optionNumber + ") ");
+        for (int optionNumber : getAllOptions().keySet()) {
+            result.append(" (No. ").append(optionNumber).append(") ");
             Iterator<OptionValue> iterator = this.getOptions(optionNumber).iterator();
             OptionValue optionValue = iterator.next();
             result.append(optionValue.toString());
-            while(iterator.hasNext())
-                result.append(" / " + iterator.next().toString());
+            while (iterator.hasNext())
+                result.append(" / ").append(iterator.next().toString());
         }
         result.append(" | ");
 
@@ -1031,8 +1075,8 @@ public abstract class CoapMessage {
         if (payloadLength == 0)
             result.append("<no content>]");
         else
-            result.append(getContent().toString(0, Math.min(getContent().readableBytes(), 20), CoapMessage.CHARSET)
-                + "... ( " + payloadLength + " bytes)]");
+            result.append(getContent().toString(0, Math.min(getContent().readableBytes(), 20), CoapMessage.CHARSET))
+                .append("... ( ").append(payloadLength).append(" bytes)]");
 
         return result.toString();
 
@@ -1055,7 +1099,8 @@ public abstract class CoapMessage {
 
         public static LinkedHashSetSupplier instance = new LinkedHashSetSupplier();
 
-        private LinkedHashSetSupplier() {}
+        private LinkedHashSetSupplier() {
+        }
 
         public static LinkedHashSetSupplier getInstance() {
             return instance;

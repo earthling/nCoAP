@@ -347,16 +347,16 @@ public class CoapRequest extends CoapMessage {
      * {@link CoapRequest}.
      */
     public String getUriPath() {
-        String result = "/";
+        StringBuilder result = new StringBuilder("/");
 
         Iterator<OptionValue> iterator = options.get(URI_PATH).iterator();
         if (iterator.hasNext())
-            result += ((StringOptionValue) iterator.next()).getDecodedValue();
+            result.append(((StringOptionValue) iterator.next()).getDecodedValue());
 
         while(iterator.hasNext())
-            result += ("/" + ((StringOptionValue) iterator.next()).getDecodedValue());
+            result.append("/").append(((StringOptionValue) iterator.next()).getDecodedValue());
 
-        return result;
+        return result.toString();
     }
 
     /**
@@ -367,19 +367,19 @@ public class CoapRequest extends CoapMessage {
      * {@link CoapRequest} or the empty string ("") if no such option is present.
      */
     public String getUriQuery() {
-        String result = "";
+        StringBuilder result = new StringBuilder();
 
         if (options.containsKey(URI_QUERY)) {
 
             Iterator<OptionValue> iterator = options.get(URI_QUERY).iterator();
-            result += (((StringOptionValue) iterator.next()).getDecodedValue());
+            result.append(((StringOptionValue) iterator.next()).getDecodedValue());
 
             while(iterator.hasNext())
-                result += ("&" + ((StringOptionValue) iterator.next()).getDecodedValue());
+                result.append("&").append(((StringOptionValue) iterator.next()).getDecodedValue());
 
         }
 
-        return result;
+        return result.toString();
     }
 
     /**
@@ -475,8 +475,7 @@ public class CoapRequest extends CoapMessage {
             OptionValue proxySchemeOptionValue = options.get(PROXY_SCHEME).iterator().next();
             String scheme = ((StringOptionValue) proxySchemeOptionValue).getDecodedValue();
             String uriHost = getUriHost();
-            OptionValue uriPortOptionValue = options.get(URI_PORT).iterator().next();
-            int uriPort = ((UintOptionValue) uriPortOptionValue).getDecodedValue().intValue();
+            int uriPort = (int) getUriPort();
             String uriPath = getUriPath();
             String uriQuery = getUriQuery();
 

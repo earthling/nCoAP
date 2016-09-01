@@ -64,7 +64,7 @@ public class HeaderDecodingException extends Exception{
      *
      * @return the malformed inbound messages origin CoAP endpoints
      */
-    public InetSocketAddress getremoteSocket() {
+    public InetSocketAddress getRemoteSocket() {
         return remoteSocket;
     }
 }

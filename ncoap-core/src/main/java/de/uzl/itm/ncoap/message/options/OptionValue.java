@@ -236,9 +236,12 @@ public abstract class OptionValue<T>{
             throw new IllegalArgumentException(String.format(VALUE_IS_DEFAULT_VALUE, optionNumber));
         }
 
-        if (getMinLength(optionNumber) > value.length || getMaxLength(optionNumber) < value.length) {
-            throw new IllegalArgumentException(String.format(OUT_OF_ALLOWED_RANGE, value.length, optionNumber,
-                    getMinLength(optionNumber), getMaxLength(optionNumber)));
+        Characteristics characteristics = CHARACTERISTICS.get(optionNumber);
+        if (characteristics != null) {
+            if (characteristics.getMinLength() > value.length || characteristics.getMaxLength() < value.length) {
+                throw new IllegalArgumentException(String.format(OUT_OF_ALLOWED_RANGE, value.length, optionNumber,
+                        characteristics.getMinLength(), characteristics.getMaxLength()));
+            }
         }
 
         this.value = value;
