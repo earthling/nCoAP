@@ -98,6 +98,15 @@ public class StringOptionValue extends OptionValue<String> {
                                     value.getBytes(CoapMessage.CHARSET)));
     }
 
+    public StringOptionValue(int optionNumber, String value, boolean allowDefault) throws IllegalArgumentException{
+
+        this(optionNumber, optionNumber == URI_HOST ?
+                convertToByteArrayWithoutPercentEncoding(value.toLowerCase(Locale.ENGLISH)) :
+                ((optionNumber == URI_PATH || optionNumber == URI_QUERY) ?
+                        convertToByteArrayWithoutPercentEncoding(value) :
+                        value.getBytes(CoapMessage.CHARSET)), allowDefault);
+    }
+
     /**
      * Returns the decoded value of this option assuming the byte array returned by {@link #getValue()} is an encoded
      * String using {@link CoapMessage#CHARSET}.

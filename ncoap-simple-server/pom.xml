@@ -14,8 +14,8 @@
     <artifactId>ncoap-simple-server</artifactId>
     <name>Simple nCoAP-Server</name>
     <description>
-      Example module on how to build a simple CoAP server application hosting observable and not observable
-      webservices using nCoAP.
+        Example module on how to build a simple CoAP server application hosting observable and not observable
+        webservices using nCoAP.
     </description>
 
     <packaging>jar</packaging>
@@ -36,35 +36,39 @@
 
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.dstovall</groupId>
-                <artifactId>onejar-maven-plugin</artifactId>
-                <version>1.4.4</version>
-                <executions>
-                    <execution>
-                        <configuration>
-                            <mainClass>
-                                de.uzl.itm.ncoap.examples.server.SimpleCoapServer
-                            </mainClass>
-                            <!-- Optional -->
-                            <onejarVersion>0.97</onejarVersion>
-                            <!-- Optional, default is false -->
-                            <attachToBuild>true</attachToBuild>
-                            <!-- Optional, default is "onejar" -->
-                            <classifier>onejar</classifier>
-                        </configuration>
-                        <goals>
-                            <goal>one-jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
+    <profiles>
+        <profile>
+            <id>examples</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.dstovall</groupId>
+                        <artifactId>onejar-maven-plugin</artifactId>
+                        <version>1.4.4</version>
+                        <executions>
+                            <execution>
+                                <configuration>
+                                    <mainClass>
+                                        de.uzl.itm.ncoap.examples.server.SimpleCoapServer
+                                    </mainClass>
+                                    <!-- Optional -->
+                                    <onejarVersion>0.97</onejarVersion>
+                                    <!-- Optional, default is false -->
+                                    <attachToBuild>true</attachToBuild>
+                                    <!-- Optional, default is "onejar" -->
+                                    <classifier>onejar</classifier>
+                                </configuration>
+                                <goals>
+                                    <goal>one-jar</goal>
 
-
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 
 </project>

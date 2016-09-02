@@ -122,7 +122,7 @@ public class CoapRequest extends CoapMessage {
      * @throws IllegalArgumentException if the UTF-8 encoding of the given {@link URI} exceeds the maximum length
      * for {@link Option#PROXY_URI}.
      */
-    private void setProxyURIOption(URI targetUri) throws IllegalArgumentException {
+    public void setProxyURIOption(URI targetUri) throws IllegalArgumentException {
         this.addStringOption(PROXY_URI, targetUri.toString());
     }
 
@@ -170,7 +170,7 @@ public class CoapRequest extends CoapMessage {
     }
 
     
-    private void addUriPathOptions(String uriPath) throws IllegalArgumentException {
+    public void addUriPathOptions(String uriPath) throws IllegalArgumentException {
         if (uriPath != null) {
             //Path must not start with "/" to be further processed
             if (uriPath.startsWith("/")) {

@@ -24,6 +24,7 @@
  */
 package de.uzl.itm.ncoap.message.options;
 
+import com.google.common.primitives.Longs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,9 +76,13 @@ public class UintOptionValue extends OptionValue<Long> {
     }
 
 
-//    public UintOptionValue(int optionNumber, long value) throws IllegalArgumentException {
-//        this(optionNumber, value == 0 ? new byte[0] : new BigInteger(1, Longs.toByteArray(value)).toByteArray());
-//    }
+    public UintOptionValue(int optionNumber, long value) throws IllegalArgumentException {
+        this(optionNumber, value == 0 ? new byte[0] : new BigInteger(1, Longs.toByteArray(value)).toByteArray());
+    }
+
+    public UintOptionValue(int optionNumber, long value, boolean allowDefault) throws IllegalArgumentException {
+        this(optionNumber, value == 0 ? new byte[0] : new BigInteger(1, Longs.toByteArray(value)).toByteArray(), allowDefault);
+    }
 
     @Override
     public Long getDecodedValue() {
